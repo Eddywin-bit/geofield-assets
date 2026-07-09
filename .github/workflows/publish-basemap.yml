@@ -1,0 +1,42 @@
+name: Publish basemap
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Try the Lovable CDN first
+        id: cdn
+        continue-on-error: true
+        run: |
+          curl -fsSL --max-time 900 \
+            "https://geofield-instrument.lovable.app/__l5e/assets-v1/3df05f2c-d083-43a1-9753-5c88e4ba4d40/ghana.pmtiles" \
+            -o ghana.pmtiles
+          echo "ab08c5fba7f2992419b690cd2ec34663  ghana.pmtiles" | md5sum -c -
+
+      - name: Rebuild from OpenStreetMap if the CDN is gone
+        if: steps.cdn.outcome == 'failure'
+        run: |
+          curl -fsSL -o pm.tar.gz \
+            https://github.com/protomaps/go-pmtiles/releases/download/v1.31.0/go-pmtiles_1.31.0_Linux_x86_64.tar.gz
+          tar xzf pm.tar.gz pmtiles
+          ./pmtiles extract "https://build.protomaps.com/20260708.pmtiles" ghana.pmtiles \
+            --bbox=-3.26,4.74,1.19,11.18 --maxzoom=14
+
+      - name: Report what we got
+        run: |
+          ls -l ghana.pmtiles
+          md5sum ghana.pmtiles
+
+      - name: Commit it
+        run: |
+          touch .nojekyll
+          git config user.name  "github-actions"
+          git config user.email "github-actions@github.com"
+          git add ghana.pmtiles .nojekyll
+          git commit -m "Publish ghana.pmtiles"
+          git push
